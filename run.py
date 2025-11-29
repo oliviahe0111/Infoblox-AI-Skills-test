@@ -16,6 +16,8 @@ from run_ipv4_validation import (
 )
 # Import MAC validation helper
 from run_mac_validator import validate_mac_field
+# Import hostname validation helper
+from run_hostname_validation import validate_hostname_field
 
 HERE = Path(__file__).parent
 
@@ -30,6 +32,7 @@ def process(input_csv, out_csv, anomalies_json):
         core_fields = [
             "ip", "ip_valid", "ip_version", "subnet_cidr",
             "mac", "mac_valid",
+            "hostname", "hostname_valid",
             "normalization_steps", "source_row_id",
         ]
         extra_fields = [c for c in reader.fieldnames if c not in core_fields]
@@ -70,6 +73,11 @@ def process(input_csv, out_csv, anomalies_json):
             mac_result = validate_mac_field(row, row_anomalies, normalization_steps)
 
             # ------------------------------------------------------------------
+            # Step 3: Hostname validation (deterministic)
+            # ------------------------------------------------------------------
+            hostname_result = validate_hostname_field(row, row_anomalies, normalization_steps)
+
+            # ------------------------------------------------------------------
             # Build output row
             # ------------------------------------------------------------------
             clean_row = {
@@ -79,6 +87,8 @@ def process(input_csv, out_csv, anomalies_json):
                 "subnet_cidr": subnet,
                 "mac": mac_result["mac"],
                 "mac_valid": str(mac_result["mac_valid"]).lower(),
+                "hostname": hostname_result["hostname"],
+                "hostname_valid": str(hostname_result["hostname_valid"]).lower(),
                 "normalization_steps": "|".join(normalization_steps),
                 "source_row_id": row.get("source_row_id", ""),
             }
