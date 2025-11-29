@@ -22,6 +22,8 @@ from run_hostname_validation import validate_hostname_field
 from run_fqdn_validation import validate_fqdn_field
 # Import owner validation helper
 from run_owner_validation import validate_owner_field
+# Import device type validation helper
+from run_device_type_validation import validate_device_type_field
 
 HERE = Path(__file__).parent
 
@@ -39,6 +41,7 @@ def process(input_csv, out_csv, anomalies_json):
             "hostname", "hostname_valid",
             "fqdn", "fqdn_consistent", "reverse_ptr",
             "owner", "owner_email", "owner_team",
+            "device_type", "device_type_confidence",
             "normalization_steps", "source_row_id",
         ]
         extra_fields = [c for c in reader.fieldnames if c not in core_fields]
@@ -97,6 +100,11 @@ def process(input_csv, out_csv, anomalies_json):
             owner_result = validate_owner_field(row, row_anomalies, normalization_steps)
 
             # ------------------------------------------------------------------
+            # Step 6: Device type validation (deterministic + LLM fallback)
+            # ------------------------------------------------------------------
+            device_type_result = validate_device_type_field(row, row_anomalies, normalization_steps)
+
+            # ------------------------------------------------------------------
             # Build output row
             # ------------------------------------------------------------------
             clean_row = {
@@ -114,6 +122,8 @@ def process(input_csv, out_csv, anomalies_json):
                 "owner": owner_result["owner"],
                 "owner_email": owner_result["owner_email"],
                 "owner_team": owner_result["owner_team"],
+                "device_type": device_type_result["device_type"],
+                "device_type_confidence": device_type_result["device_type_confidence"],
                 "normalization_steps": "|".join(normalization_steps),
                 "source_row_id": row.get("source_row_id", ""),
             }
