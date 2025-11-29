@@ -20,6 +20,8 @@ from run_mac_validator import validate_mac_field
 from run_hostname_validation import validate_hostname_field
 # Import FQDN validation helper
 from run_fqdn_validation import validate_fqdn_field
+# Import owner validation helper
+from run_owner_validation import validate_owner_field
 
 HERE = Path(__file__).parent
 
@@ -36,6 +38,7 @@ def process(input_csv, out_csv, anomalies_json):
             "mac", "mac_valid",
             "hostname", "hostname_valid",
             "fqdn", "fqdn_consistent", "reverse_ptr",
+            "owner", "owner_email", "owner_team",
             "normalization_steps", "source_row_id",
         ]
         extra_fields = [c for c in reader.fieldnames if c not in core_fields]
@@ -89,6 +92,11 @@ def process(input_csv, out_csv, anomalies_json):
             fqdn_result = validate_fqdn_field(row, hostname_result, row_anomalies, normalization_steps)
 
             # ------------------------------------------------------------------
+            # Step 5: Owner validation (deterministic + LLM fallback)
+            # ------------------------------------------------------------------
+            owner_result = validate_owner_field(row, row_anomalies, normalization_steps)
+
+            # ------------------------------------------------------------------
             # Build output row
             # ------------------------------------------------------------------
             clean_row = {
@@ -103,6 +111,9 @@ def process(input_csv, out_csv, anomalies_json):
                 "fqdn": fqdn_result["fqdn"],
                 "fqdn_consistent": fqdn_result["fqdn_consistent"],
                 "reverse_ptr": fqdn_result["reverse_ptr"],
+                "owner": owner_result["owner"],
+                "owner_email": owner_result["owner_email"],
+                "owner_team": owner_result["owner_team"],
                 "normalization_steps": "|".join(normalization_steps),
                 "source_row_id": row.get("source_row_id", ""),
             }
