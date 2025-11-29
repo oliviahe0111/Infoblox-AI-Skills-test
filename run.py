@@ -1,16 +1,117 @@
 #!/usr/bin/env python3
-# Simple runner to produce baseline outputs.
-# Extend this to call your own normalization/classification steps.
+"""
+Unified data-cleaning pipeline for inventory_raw.csv.
+Calls deterministic validators in order and writes inventory_clean.csv + anomalies.json.
+"""
 
-import subprocess, sys
+import csv
+import json
+import sys
 from pathlib import Path
+
+# Import IP validation helpers from existing module
+from run_ipv4_validation import (
+    ipv4_validate_and_normalize,
+    default_subnet,
+)
+# Import MAC validation helper
+from run_mac_validator import validate_mac_field
 
 HERE = Path(__file__).parent
 
+
+def process(input_csv, out_csv, anomalies_json):
+    all_anomalies = []
+
+    with open(input_csv, newline="") as f, open(out_csv, "w", newline="") as g:
+        reader = csv.DictReader(f)
+
+        # Build output fieldnames: core validated columns first, then pass-through
+        core_fields = [
+            "ip", "ip_valid", "ip_version", "subnet_cidr",
+            "mac", "mac_valid",
+            "normalization_steps", "source_row_id",
+        ]
+        extra_fields = [c for c in reader.fieldnames if c not in core_fields]
+        fieldnames = core_fields + extra_fields
+
+        writer = csv.DictWriter(g, fieldnames=fieldnames)
+        writer.writeheader()
+
+        for row in reader:
+            normalization_steps = []
+            row_anomalies = []
+
+            # ------------------------------------------------------------------
+            # Step 1: IP validation (deterministic)
+            # ------------------------------------------------------------------
+            raw_ip = row.get("ip", "")
+            valid_ip, canonical_ip, reason_ip = ipv4_validate_and_normalize(raw_ip)
+            normalization_steps.append("ip_trim")
+
+            if reason_ip == "ok":
+                normalization_steps.append("ip_parse")
+                normalization_steps.append("ip_normalize")
+                ip_out = canonical_ip
+                ip_valid = "true"
+                ip_version = "4"
+                subnet = default_subnet(ip_out)
+            else:
+                ip_out = str(raw_ip).strip()
+                ip_valid = "false"
+                ip_version = ""
+                subnet = ""
+                row_anomalies.append({"field": "ip", "type": reason_ip, "value": raw_ip})
+                normalization_steps.append(f"ip_invalid_{reason_ip}")
+
+            # ------------------------------------------------------------------
+            # Step 2: MAC validation (deterministic)
+            # ------------------------------------------------------------------
+            mac_result = validate_mac_field(row, row_anomalies, normalization_steps)
+
+            # ------------------------------------------------------------------
+            # Build output row
+            # ------------------------------------------------------------------
+            clean_row = {
+                "ip": ip_out,
+                "ip_valid": ip_valid,
+                "ip_version": ip_version,
+                "subnet_cidr": subnet,
+                "mac": mac_result["mac"],
+                "mac_valid": str(mac_result["mac_valid"]).lower(),
+                "normalization_steps": "|".join(normalization_steps),
+                "source_row_id": row.get("source_row_id", ""),
+            }
+
+            # Pass-through remaining fields unchanged
+            for k in extra_fields:
+                clean_row[k] = row.get(k, "")
+
+            writer.writerow(clean_row)
+
+            # Collect anomalies for this row
+            if row_anomalies:
+                all_anomalies.append({
+                    "source_row_id": row.get("source_row_id"),
+                    "issues": row_anomalies,
+                    "recommended_actions": ["Review and correct flagged fields"],
+                })
+
+    with open(anomalies_json, "w") as h:
+        json.dump(all_anomalies, h, indent=2)
+
+
 def main():
-    # Step 1: IPv4 normalization (example starter)
-    subprocess.check_call([sys.executable, str(HERE / "run_ipv4_validation.py"), str(HERE / "inventory_raw.csv")])
-    print("IPv4 normalization complete. Next: add your steps to reach full target schema.")
+    input_csv = HERE / "inventory_raw.csv"
+    out_csv = HERE / "inventory_clean.csv"
+    anomalies_json = HERE / "anomalies.json"
+
+    if len(sys.argv) >= 2:
+        input_csv = Path(sys.argv[1])
+
+    process(str(input_csv), str(out_csv), str(anomalies_json))
+    print(f"Wrote {out_csv} and {anomalies_json}")
+
 
 if __name__ == "__main__":
     main()
