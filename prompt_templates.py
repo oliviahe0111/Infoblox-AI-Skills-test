@@ -7,21 +7,26 @@ No actual LLM calls — these are logged to prompts.md for human review.
 OWNER_PROMPT_TEMPLATE = """\
 Temperature: 0.2
 
-You are a data normalization assistant. Extract owner information from the raw input.
+You are a data normalization assistant. Deterministic rules could not confidently
+identify the owner, so this prompt is ONLY for ambiguous cases.
+
+IMPORTANT:
+- Do NOT assume a person name unless extremely obvious.
+- Do NOT hallucinate names.
+- If unsure, output owner="unknown".
+- If the string looks like an environment, location, or description,
+  treat it as non-human.
+- Use the team field ONLY if explicitly mentioned (brackets, parentheses, or "Team:" style).
+- If nothing can be determined, return:
+    owner="unknown"
+    owner_email=null
+    owner_team="unknown"
 
 ## Input Row (JSON)
 {row_json}
 
 ## Notes
 {notes}
-
-## Task
-Parse the owner-related fields and return structured JSON.
-
-- Extract the human owner name (not team, not email).
-- Extract the email address if present.
-- Extract the team name if present (often in brackets or parentheses).
-- If a field cannot be determined, use "unknown" for strings or null for email.
 
 ## Output Schema (JSON only, no extra text)
 {{
@@ -31,14 +36,14 @@ Parse the owner-related fields and return structured JSON.
 }}
 
 ## Examples
-Input: "Jane Doe <jane.doe@acme.com> [NetOps]"
-Output: {{"owner": "Jane Doe", "owner_email": "jane.doe@acme.com", "owner_team": "NetOps"}}
+Input: "Main Server Room"
+Output: {{"owner": "unknown", "owner_email": null, "owner_team": "unknown"}}
 
-Input: "security-team@acme.com"
-Output: {{"owner": "unknown", "owner_email": "security-team@acme.com", "owner_team": "unknown"}}
+Input: "ops"
+Output: {{"owner": "unknown", "owner_email": null, "owner_team": "unknown"}}
 
-Input: "IT Infrastructure Team"
-Output: {{"owner": "unknown", "owner_email": null, "owner_team": "IT Infrastructure Team"}}
+Input: "old storage rack"
+Output: {{"owner": "unknown", "owner_email": null, "owner_team": "unknown"}}
 
 Respond with valid JSON only.
 """
